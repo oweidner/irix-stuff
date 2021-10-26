@@ -1,0 +1,89 @@
+#!/bin/sh
+##
+## Start or stop the SSHD daemon
+##
+## Set custom options  in OPTIONS
+## default configuration
+
+#IRIX / SGUG Paths needed
+IS_ON=/etc/chkconfig
+SSHD=/usr/sgug/sbin/sshd
+CONFIG=/usr/sgug/etc/ssh
+SERVICE=sshd
+AUTOCREATE_SERVER_KEYS=YES #Make keys automatically 
+OPTIONS="" #Startup options here
+KEYGEN=/usr/sgug/bin/ssh-keygen
+RSA_KEY=$CONFIG/ssh_host_rsa_key
+ECSDA_KEY=$CONFIG/ssh_host_ecdsa_key
+ED25519_KEY=$CONFIG/ssh_host_ed25519_key
+#We must have the correct PID_FILE so get it from the config
+PID_FILE=`grep PidFile $CONFIG/sshd_config | sed -e 's/^#//' | awk '{print $2}'`
+if [ -f $PID_FILE ]; then
+        PID=`cat $PID_FILE`
+fi
+
+if $IS_ON verbose; then
+    ECHO=echo
+else
+    ECHO=:
+fi
+
+do_keygen() {
+	if [ ! -f $RSA_KEY ]; then
+		echo -n $"Generating SSH2 RSA host key: "
+		$KEYGEN -t rsa -b 4096 -f $RSA_KEY -N "" < /dev/null
+		chmod 600 $RSA_KEY
+                chmod 644 $RSA_KEY.pub
+	fi
+	if [ ! -f $ECSDA_KEY ]; then
+		echo -n $"Generating SSH2 ECSDA host key: "
+		$KEYGEN -t ecdsa -b 521 -f $ECSDA_KEY -N "" < /dev/null
+		chmod 600 $ECSDA_KEY
+                chmod 644 $ECSDA_KEY.pub
+	fi
+	if [ ! -f $ED25519_KEY ]; then
+		echo -n $"Generating SSH2 ED25519 host key: "
+		$KEYGEN -t ed25519 -f $ED25519_KEY -N "" < /dev/null
+		chmod 600 $ED25519_KEY
+                chmod 644 $ED25519_KEY.pub
+	fi
+}
+
+
+case "$1" in
+    start)
+	if $IS_ON $SERVICE && test -x $SSHD; then
+		if [ "x${AUTOCREATE_SERVER_KEYS}" != xNO ]; then
+			do_keygen
+		fi
+		echo -n $"Starting $SERVICE: "
+		$SSHD $OPTIONS
+	fi
+	;;
+
+    reload)
+        echo -n $"Reloading $SERVICE: "
+	#TEST FOR PID?
+        kill -HUP $PID
+        echo
+	;;
+
+    restart)
+	if $IS_ON $SERVICE && test -x $SSHD; then
+		echo -n $"Stoping $SERVICE: "
+		kill -TERM $PID
+		echo -n $"Starting $SERVICE: "
+		$SSHD $OPTIONS
+	fi
+	;;
+
+    stop)
+	if $IS_ON $SERVICE; then
+	    /sbin/killall -TERM sshd
+	fi
+	;;
+
+    *)
+	echo "usage: $0 {start|stop|reload|restart}"
+	;;
+esac
